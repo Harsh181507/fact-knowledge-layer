@@ -45,8 +45,7 @@ curl -F "file=@report.pdf" http://localhost:8080/api/documents
 
 ## Video Demo
 
-*[Add your demo link here before submitting — a PDF being processed, plus
-the four required cases below, shown via the UI or curl.]*
+*https://drive.google.com/file/d/1i4P9kup3MK7FMiRFTb14MOPDZn_c6Zz-/view?usp=sharing*
 
 ## Approach
 
