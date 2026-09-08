@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fact Knowledge Layer</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; margin: 0; background: #f6f7f9; color: #1a1a1a; }
+  header { background: #14213d; color: white; padding: 20px 32px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: #b7c0d8; font-size: 13px; }
+  main { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+  section { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  h2 { font-size: 16px; margin-top: 0; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  button { background: #14213d; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  button:hover { background: #1f2d55; }
+  button.secondary { background: #e5e7eb; color: #1a1a1a; }
+  input[type=file] { font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+  th { background: #fafafa; color: #555; font-weight: 600; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; color: white; }
+  .tag.CORROBORATES { background: #1a7f37; }
+  .tag.CONTRADICTS { background: #cf222e; }
+  .tag.RECONCILED_BY_CONTEXT { background: #9a6700; }
+  .tag.UNCERTAIN { background: #6e7781; }
+  .review { color: #cf222e; font-weight: 600; }
+  .evidence { font-style: italic; color: #444; background: #fafafa; padding: 6px 8px; border-left: 3px solid #ccc; margin-top: 4px; }
+  .muted { color: #777; font-size: 12px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .tabs button { background: #eee; color: #333; }
+  .tabs button.active { background: #14213d; color: white; }
+  .pill-filter { display:flex; gap:8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .status { font-size: 12px; padding: 6px 10px; border-radius: 6px; margin-top: 10px; display: none; }
+  .status.ok { background: #dafbe1; color: #116329; display: block; }
+  .status.err { background: #ffebe9; color: #82071e; display: block; }
+  .status.loading { background: #eef2ff; color: #1e3a8a; display: block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fact Knowledge Layer</h1>
+  <p>Upload PDFs, extract grounded facts, and see what corroborates, contradicts, or reconciles across documents.</p>
+</header>
+<main>
+
+  <section>
+    <h2>Upload a PDF</h2>
+    <div class="row">
+      <input type="file" id="fileInput" accept="application/pdf" />
+      <button onclick="uploadFile()">Upload &amp; Process</button>
+    </div>
+    <div id="uploadStatus" class="status"></div>
+  </section>
+
+  <section>
+    <div class="tabs">
+      <button id="tab-documents" class="active" onclick="showTab('documents')">Documents</button>
+      <button id="tab-facts" onclick="showTab('facts')">All Facts</button>
+      <button id="tab-relationships" onclick="showTab('relationships')">Relationships</button>
+    </div>
+
+    <div id="view-documents">
+      <button class="secondary" onclick="loadDocuments()">Refresh</button>
+      <table>
+        <thead><tr><th>ID</th><th>Filename</th><th>Pages</th><th>Status</th><th>Uploaded</th><th></th></tr></thead>
+        <tbody id="documentsBody"></tbody>
+      </table>
+    </div>
+
+    <div id="view-facts" style="display:none">
+      <div class="row">
+        <button class="secondary" onclick="loadFacts()">Refresh</button>
+        <label class="muted"><input type="checkbox" id="onlyReview" onchange="loadFacts()"> only flagged for review</label>
+      </div>
+      <table>
+        <thead><tr><th>ID</th><th>Doc</th><th>Subject</th><th>Metric</th><th>Value</th><th>Conf.</th><th>Evidence</th></tr></thead>
+        <tbody id="factsBody"></tbody>
+      </table>
+    </div>
+
+    <div id="view-relationships" style="display:none">
+      <div class="pill-filter">
+        <button class="secondary" onclick="loadRelationships(null)">All</button>
+        <button class="secondary" onclick="loadRelationships('CORROBORATES')">Corroborates</button>
+        <button class="secondary" onclick="loadRelationships('CONTRADICTS')">Contradicts</button>
+        <button class="secondary" onclick="loadRelationships('RECONCILED_BY_CONTEXT')">Reconciled by context</button>
+      </div>
+      <div id="relationshipsBody"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+async function uploadFile() {
+  const input = document.getElementById('fileInput');
+  const statusEl = document.getElementById('uploadStatus');
+  if (!input.files.length) { alert('Choose a PDF first'); return; }
+  const form = new FormData();
+  form.append('file', input.files[0]);
+
+  statusEl.className = 'status loading';
+  statusEl.textContent = 'Uploading and processing... this calls the LLM for extraction and comparison, so it can take a little while.';
+
+  try {
+    const res = await fetch('/api/documents', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    statusEl.className = 'status ok';
+    statusEl.textContent = `Processed "${data.filename}": ${data.facts.length} fact(s) extracted (status: ${data.status}).`;
+    loadDocuments();
+  } catch (e) {
+    statusEl.className = 'status err';
+    statusEl.textContent = e.message;
+  }
+}
+
+function showTab(name) {
+  ['documents','facts','relationships'].forEach(t => {
+    document.getElementById('view-' + t).style.display = (t === name) ? '' : 'none';
+    document.getElementById('tab-' + t).classList.toggle('active', t === name);
+  });
+  if (name === 'documents') loadDocuments();
+  if (name === 'facts') loadFacts();
+  if (name === 'relationships') loadRelationships(null);
+}
+
+async function loadDocuments() {
+  const res = await fetch('/api/documents');
+  const docs = await res.json();
+  const body = document.getElementById('documentsBody');
+  body.innerHTML = docs.map(d => `
+    <tr>
+      <td>${d.id}</td>
+      <td>${escapeHtml(d.filename)}</td>
+      <td>${d.pageCount}</td>
+      <td>${d.status}${d.processingNote ? '<br><span class="muted">' + escapeHtml(d.processingNote) + '</span>' : ''}</td>
+      <td class="muted">${new Date(d.uploadedAt).toLocaleString()}</td>
+      <td>${d.facts.length} fact(s)</td>
+    </tr>`).join('');
+}
+
+async function loadFacts() {
+  const onlyReview = document.getElementById('onlyReview').checked;
+  const url = '/api/facts' + (onlyReview ? '?needsReview=true' : '');
+  const res = await fetch(url);
+  const facts = await res.json();
+  const body = document.getElementById('factsBody');
+  body.innerHTML = facts.map(f => `
+    <tr>
+      <td>${f.id}</td>
+      <td class="muted">${escapeHtml(f.documentFilename)}</td>
+      <td>${escapeHtml(f.subject)}</td>
+      <td>${escapeHtml(f.metricKey)}</td>
+      <td>${escapeHtml(f.value)} ${escapeHtml(f.unit || '')}</td>
+      <td class="${f.needsReview ? 'review' : ''}">${f.confidence.toFixed(2)}${f.needsReview ? ' ⚠' : ''}</td>
+      <td><div class="evidence">"${escapeHtml(f.evidenceQuote)}"</div></td>
+    </tr>`).join('');
+}
+
+async function loadRelationships(type) {
+  const url = '/api/relationships' + (type ? '?type=' + type : '');
+  const res = await fetch(url);
+  const rels = await res.json();
+  const container = document.getElementById('relationshipsBody');
+  if (!rels.length) {
+    container.innerHTML = '<p class="muted">No relationships found yet.</p>';
+    return;
+  }
+  container.innerHTML = rels.map(r => `
+    <div style="border:1px solid #eee;border-radius:8px;padding:14px;margin-bottom:12px;">
+      <span class="tag ${r.relationType}">${r.relationType.replace(/_/g,' ')}</span>
+      <p style="margin:8px 0;">${escapeHtml(r.explanation)}</p>
+      <div class="row" style="align-items:stretch;">
+        ${factCard(r.factA)}
+        ${factCard(r.factB)}
+      </div>
+    </div>`).join('');
+}
+
+function factCard(f) {
+  return `<div style="flex:1;min-width:280px;background:#fafafa;border-radius:6px;padding:10px;">
+    <div class="muted">${escapeHtml(f.documentFilename)}</div>
+    <strong>${escapeHtml(f.subject)}</strong> — ${escapeHtml(f.metricKey)}<br>
+    ${escapeHtml(f.value)} ${escapeHtml(f.unit || '')}
+    <div class="evidence">"${escapeHtml(f.evidenceQuote)}"</div>
+  </div>`;
+}
+
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+loadDocuments();
+</script>
+</body>
+</html>
