@@ -6,8 +6,8 @@ for the Superjoin VIT 2026 Engineering Intern assignment.
 
 ## Setup and Run Instructions
 
-**Requirements:** Java 17+, Maven (or use the included `./mvnw`), an
-Anthropic API key.
+**Requirements:** Java 17+, Maven (or use the included `./mvnw`), a free
+Google Gemini API key.
 
 1. Get a **free** API key (no credit card required) from
    [Google AI Studio](https://aistudio.google.com/apikey), then set it as an
@@ -79,10 +79,14 @@ label first (a real indexed query, not filtering in memory) keeps the number
 of LLM comparison calls roughly linear in the number of facts, which is what
 makes "many PDFs in the same knowledge layer" workable.
 
-**AI tools used:** Google's Gemini API (free tier, `gemini-2.0-flash`) is
-the extraction/reasoning engine itself — not just a coding aid — for both
-fact extraction and pairwise comparison, since the assignment explicitly
-allows using an LLM as part of the system. It's used with
+**AI tools used:** Google's Gemini API (free tier) is the extraction/reasoning
+engine itself — not just a coding aid — for both fact extraction and pairwise
+comparison, since the assignment explicitly allows using an LLM as part of
+the system. The specific model is a single config property
+(`llm.api.model` in `application.properties`) rather than hard-coded,
+because Google's free-tier model lineup and per-model quotas changed
+multiple times during development — this makes swapping models a one-line
+config change instead of a code change. It's used with
 `responseMimeType: application/json` so it returns structured JSON directly,
 without needing prompt tricks to avoid markdown fences. Claude (Anthropic)
 was used as a coding assistant to help write and review this codebase.
